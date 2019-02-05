@@ -5,34 +5,51 @@ using UnityEngine;
 namespace DanielDangToolkit
 {
     public abstract class Singleton<T> : MonoBehaviour where T : Singleton<T>
+{
+	private static T instance;
+	public static T Instance { 
+
+		get {
+
+            if (applicationIsQuitting)
+            {
+                return null;
+            }
+
+            if (instance == null)
+			{
+				new GameObject(typeof(T).ToString(), typeof(T));
+			}
+			return instance;
+		} 
+		private set {
+			instance = value;
+		}
+	}
+
+    private static bool applicationIsQuitting = false;
+    private static int duplicateDeleteCounter = 0;
+
+    public void OnDestroy()
     {
-        private static T instance;
-        public static T Instance
+        if (duplicateDeleteCounter > 0)
         {
-
-            get
-            {
-                if (instance == null)
-                {
-                    new GameObject(typeof(T).ToString(), typeof(T));
-                }
-                return instance;
-            }
-            private set
-            {
-                instance = value;
-            }
+            duplicateDeleteCounter--;
+            return;
         }
-
-        protected virtual void Awake()
-        {
-            if (instance != null)
-            {
-                Destroy(gameObject);
-                return;
-            }
-            Instance = (T)this;
-            DontDestroyOnLoad(gameObject);
-        }
+        // Debug.Log("Gets destroyed");
+        applicationIsQuitting = true;
     }
+
+    protected virtual void Awake()
+	{
+		if (instance != null) {
+            Destroy(this);
+            Destroy(gameObject);
+            duplicateDeleteCounter++;
+            return;
+		}
+		Instance = (T)this;
+		DontDestroyOnLoad(gameObject);
+	}
 }
