@@ -51,6 +51,12 @@ public abstract class Singleton<T> : MonoBehaviour where T : Singleton<T>
 		}
 		Instance = (T)this;
 		DontDestroyOnLoad(gameObject);
-	}
+        OnAwake();
+    }
+
+    protected virtual void OnAwake()
+    {
+
+    }
 }
 }
