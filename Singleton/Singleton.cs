@@ -6,6 +6,8 @@ namespace DanielDangToolkit
 {
 public abstract class Singleton<T> : MonoBehaviour where T : Singleton<T>
 {
+   	public bool PersistThroughSceneLoads = true;
+
 	private static T instance;
 	public static T Instance { 
 
@@ -32,26 +34,44 @@ public abstract class Singleton<T> : MonoBehaviour where T : Singleton<T>
 
     public void OnDestroy()
     {
-        if (duplicateDeleteCounter > 0)
-        {
-            duplicateDeleteCounter--;
-            return;
-        }
-        // Debug.Log("Gets destroyed");
-        applicationIsQuitting = true;
+    	if (PersistThroughSceneLoads)
+    	{
+		if (duplicateDeleteCounter > 0)
+		{
+		    duplicateDeleteCounter--;
+		    return;
+		}
+		// Debug.Log("Gets destroyed");
+		applicationIsQuitting = true;
+	}
     }
 
-    protected virtual void Awake()
-	{
-		if (instance != null) {
-            Destroy(this);
-            Destroy(gameObject);
-            duplicateDeleteCounter++;
-            return;
+	protected virtual void Awake()
+	{ 
+		if (PersistThroughSceneLoads)
+		{
+		    if (instance != null)
+		    {
+			Destroy(this);
+			Destroy(gameObject);
+			duplicateDeleteCounter++;
+			return;
+		    }
+		    Instance = (T)this;
+		    DontDestroyOnLoad(gameObject);
+		    OnAwake();
 		}
-		Instance = (T)this;
-		DontDestroyOnLoad(gameObject);
-        OnAwake();
+		else
+		{
+		    if (instance != null)
+		    {
+			Destroy(instance);
+			Destroy(instance.gameObject);
+			instance = null;
+		    }
+		    Instance = (T)this;
+		    OnAwake();
+		}
     }
 
     protected virtual void OnAwake()
