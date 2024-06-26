@@ -19,7 +19,9 @@ public abstract class Singleton<T> : MonoBehaviour where T : Singleton<T>
             }
 
             if (instance == null)
-			{
+			{                
+   				Debug.LogWarning("Referencing "+ typeof(T).ToString()+ " Singleton from another script before singleton has loaded. " +
+                    "This will cause issues if singleton is a prefab with settings. Can solve by changing script execute order to ensure "+ typeof(T).ToString() +" is loaded first.");
 				new GameObject(typeof(T).ToString(), typeof(T));
 			}
 			return instance;
@@ -58,6 +60,7 @@ public abstract class Singleton<T> : MonoBehaviour where T : Singleton<T>
 			return;
 		    }
 		    Instance = (T)this;
+      		    transform.parent = null;
 		    DontDestroyOnLoad(gameObject);
 		    OnAwake();
 		}
