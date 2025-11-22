@@ -121,6 +121,8 @@ public class SaveManager : Singleton<SaveManager> {
     public string outputFilename = "savegame.mpak";
     public static string SPECIALS_SAVE_FILE_KEY = "";
 
+    private Dictionary<string, object> wholeSaveFileInMemory = new Dictionary<string, object>();
+
 	// Use this for initialization
 	override protected void Awake () {
 		base.Awake();
@@ -143,21 +145,23 @@ public class SaveManager : Singleton<SaveManager> {
         ValidateExistingSaveFile ();
 	}
 
-	/// <summary>
-	/// Validates the existing save file. This WILL nuke the file if userID cannot be read. This could be due to 
-	/// tampering, corruption or switching between encryption or no encrption save file.
-	/// </summary>
-	void ValidateExistingSaveFile()
-	{
-		if (!File.Exists(SaveFilePath))
-		{
-			CreateNewSaveFile();
-			return;
-		}
+    /// <summary>
+    /// Validates the existing save file. This WILL nuke the file if userID cannot be read. This could be due to 
+    /// tampering, corruption or switching between encryption or no encrption save file.
+    /// </summary>
+    void ValidateExistingSaveFile()
+    {
+        if (!File.Exists(SaveFilePath))
+        {
+            CreateNewSaveFile();
+            return;
+        }
 
-		try
-		{
-			string storedTag = Load<string>(SAVE_FILE_UNIQUE_TAG);
+        try
+        {
+            // Load into Memory!
+            wholeSaveFileInMemory = LoadIntoMemory();
+            string storedTag = Load<string>(SAVE_FILE_UNIQUE_TAG);
 			if (storedTag != SPECIALS_SAVE_FILE_KEY)
 			{
 				Debug.LogWarning("Save file validation failed! Possible tampering or wrong password. Deleting...");
@@ -172,8 +176,28 @@ public class SaveManager : Singleton<SaveManager> {
 			CreateNewSaveFile();
 		}
 	}
+
+    Dictionary<string, object> LoadIntoMemory()
+    {
+        try
+        {
+            byte[] encryptedBytes = File.ReadAllBytes(SaveFilePath);
+            byte[] plainBytes = AesDecrypt(encryptedBytes);
+            return MessagePackSerializer.Deserialize<Dictionary<string, object>>(
+                plainBytes,
+                MessagePackSerializerOptions.Standard.WithResolver(ContractlessStandardResolver.Instance)
+                                                   .WithCompression(MessagePackCompression.Lz4Block));
+        }
+        catch
+        {
+            return new Dictionary<string, object>();
+        }
+    }
+
+
 	private void CreateNewSaveFile()
 	{
+        Instance.wholeSaveFileInMemory = new Dictionary<string, object>();
 		Save(SAVE_FILE_UNIQUE_TAG, SPECIALS_SAVE_FILE_KEY);
 	}
 
@@ -181,16 +205,78 @@ public class SaveManager : Singleton<SaveManager> {
     {
         if (value == null) return;
 
-        var dict = LoadAllDataOrCreateNew();
-        dict[key] = value;
-        SaveAllData(dict);
+        // Automatically convert List<T> -> T[] for MessagePack compatibility
+        if (value is System.Collections.IList list && !value.GetType().IsArray)
+        {
+            var elementType = value.GetType().GetGenericArguments()[0];
+            var array = Array.CreateInstance(elementType, list.Count);
+            for (int i = 0; i < list.Count; i++)
+                array.SetValue(list[i], i);
+            Instance.wholeSaveFileInMemory[key] = array;
+        }
+        else
+        {
+            Instance.wholeSaveFileInMemory[key] = value;
+        }
+
+        SaveAllData(Instance.wholeSaveFileInMemory);
     }
 
     public static T Load<T>(string key)
     {
-        var dict = LoadAllDataOrCreateNew();
-        if (dict.TryGetValue(key, out var obj) && obj is T typed)
-            return typed;
+        if (!Instance.wholeSaveFileInMemory.TryGetValue(key, out var obj))
+            return default(T);
+
+        if (obj is T exactMatch)
+            return exactMatch;
+
+        var targetType = typeof(T);
+
+        // === 1. Handle List<T> <-> T[] automatic conversion ===
+        if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(List<>))
+        {
+            if (obj is System.Collections.IEnumerable enumerable && obj is not string)
+            {
+                var listType = targetType.GetGenericArguments()[0];
+                var templist = (System.Collections.IList)Activator.CreateInstance(targetType);
+                foreach (var item in enumerable)
+                    templist.Add(item);
+                return (T)templist;
+            }
+        }
+
+        // === 2. Handle T[] -> List<T> (your exact case) ===
+        if (obj is Array array && targetType.IsGenericType &&
+            targetType.GetGenericTypeDefinition() == typeof(List<>))
+        {
+            var elementType = targetType.GetGenericArguments()[0];
+            if (array.GetType().GetElementType() == elementType ||
+                elementType.IsAssignableFrom(array.GetType().GetElementType()))
+            {
+                var templist = (System.Collections.IList)Activator.CreateInstance(targetType);
+                foreach (var item in array)
+                    templist.Add(item);
+                return (T)templist;
+            }
+        }
+
+        // === 3. Handle List<T> -> T[] ===
+        if (obj is System.Collections.IList list && targetType.IsArray)
+        {
+            var elementType = targetType.GetElementType();
+            var arr = Array.CreateInstance(elementType, list.Count);
+            for (int i = 0; i < list.Count; i++)
+                arr.SetValue(list[i], i);
+            return (T)(object)arr;
+        }
+
+        // === 4. Fallback: try direct cast anyway (for primitives, Vector3, etc.) ===
+        try
+        {
+            return (T)Convert.ChangeType(obj, Nullable.GetUnderlyingType(targetType) ?? targetType);
+        }
+        catch { }
+
         return default(T);
     }
 
@@ -202,17 +288,15 @@ public class SaveManager : Singleton<SaveManager> {
 
     public static bool Exists(string key)
     {
-        if (!File.Exists(SaveFilePath)) return false;
-        var dict = LoadAllData();
-        return dict != null && dict.ContainsKey(key);
+        //if (!File.Exists(SaveFilePath)) return false;
+        return Instance.wholeSaveFileInMemory != null && Instance.wholeSaveFileInMemory.ContainsKey(key);
     }
 
     public static void Delete(string key)
     {
         if (!Exists(key)) return;
-        var dict = LoadAllDataOrCreateNew();
-        dict.Remove(key);
-        SaveAllData(dict);
+        Instance.wholeSaveFileInMemory.Remove(key);
+        SaveAllData(Instance.wholeSaveFileInMemory);
     }
 
     public static void DeleteSaveFile()
@@ -291,4 +375,10 @@ public class SaveManager : Singleton<SaveManager> {
         return ms.ToArray();
     }
 #endif
+
+    [ContextMenu("Open Persistent Data")]
+    public void OpenPersistentData()
+    {
+        Application.OpenURL(Application.persistentDataPath);
+    }
 }
