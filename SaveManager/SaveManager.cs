@@ -17,7 +17,7 @@ public class SaveManager : Singleton<SaveManager> {
 	ES3Settings settings;
 
     public static string SAVE_FILE_UNIQUE_TAG = "savefile-auth-id";
-    public static string SPECIALS_SAVE_FILE_KEY = "sdf";
+    public static string SPECIALS_SAVE_FILE_KEY = "hunger-noun-fish-dark-replace-me";
 
 	public static ES3Settings Settings
 	{
@@ -112,34 +112,35 @@ public class SaveManager : Singleton<SaveManager> {
         ES3.DeleteFile (Instance.settings);  
     }
 #elif USING_MESSAGE_PACK
-	private static readonly string SaveFilePath;
-	private static readonly byte[] EncryptionKey;
-	private static readonly byte[] EncryptionIV;
+	private static string SaveFilePath;
+	private static byte[] EncryptionKey;
+	private static byte[] EncryptionIV;
 
 	public const string SAVE_FILE_UNIQUE_TAG = "savefile-auth-id";
-	public const string SPECIALS_SAVE_FILE_KEY = "hunger-noun-fish-dark-replace-me";
-
-	static SaveManager()
-	{
-		SaveFilePath = Path.Combine(Application.persistentDataPath, "savegame.mpak");
-
-		// Derive proper 32-byte key + 16-byte IV from your password (same as EasySave does internally)
-		using var aes = Aes.Create();
-		aes.KeySize = 256;
-		aes.BlockSize = 128;
-		aes.Mode = CipherMode.CBC;
-		aes.Padding = PaddingMode.PKCS7;
-
-		var pdb = new Rfc2898DeriveBytes(SPECIALS_SAVE_FILE_KEY, salt: System.Text.Encoding.UTF8.GetBytes("EasySaveReplacementSalt"), 100000, HashAlgorithmName.SHA256);
-		EncryptionKey = pdb.GetBytes(32); // 256-bit key
-		EncryptionIV = pdb.GetBytes(16); // 128-bit IV (fixed per password+salt)
-	}
+    public string UNIQUE_PASSWORD = "";
+    public string outputFilename = "savegame.mpak";
+    public static string SPECIALS_SAVE_FILE_KEY = "";
 
 	// Use this for initialization
 	override protected void Awake () {
 		base.Awake();
 
-		ValidateExistingSaveFile ();
+        SaveFilePath = Path.Combine(Application.persistentDataPath, Instance.outputFilename);
+        if (string.IsNullOrEmpty(SPECIALS_SAVE_FILE_KEY))
+            SPECIALS_SAVE_FILE_KEY = Instance.UNIQUE_PASSWORD;
+
+        // Derive proper 32-byte key + 16-byte IV from your password (same as EasySave does internally)
+        using var aes = Aes.Create();
+        aes.KeySize = 256;
+        aes.BlockSize = 128;
+        aes.Mode = CipherMode.CBC;
+        aes.Padding = PaddingMode.PKCS7;
+
+        var pdb = new Rfc2898DeriveBytes(SPECIALS_SAVE_FILE_KEY, salt: System.Text.Encoding.UTF8.GetBytes("EasySaveReplacementSalt"), 100000, HashAlgorithmName.SHA256);
+        EncryptionKey = pdb.GetBytes(32); // 256-bit key
+        EncryptionIV = pdb.GetBytes(16); // 128-bit IV (fixed per password+salt)
+
+        ValidateExistingSaveFile ();
 	}
 
 	/// <summary>
