@@ -17,7 +17,7 @@ public class SaveManager : Singleton<SaveManager> {
 	ES3Settings settings;
 
     public static string SAVE_FILE_UNIQUE_TAG = "savefile-auth-id";
-    public static string SPECIALS_SAVE_FILE_KEY = "hunger-noun-fish-dark-replace-me";
+    public static string SPECIALS_SAVE_FILE_KEY = "sdfsdfsdfsdfsdfsdfsdfsdfsdfsdfsdfsdfsdfsdf";
 
 	public static ES3Settings Settings
 	{
